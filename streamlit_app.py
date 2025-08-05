@@ -29,6 +29,17 @@ chart = alt.Chart(df_filtered).mark_line(point=True).encode(
 ).properties(width=800, height=400)
 st.altair_chart(chart, use_container_width=True)
 
+# Grafik i volumit mujor në formë kolone
+#st.subheader("📊 Volumi mujor i {}-eve për vitin {}".format(lloji.lower(), vit))
+chart = alt.Chart(df_filtered).mark_bar().encode(
+    x=alt.X("Muaji:O", title="Muaji", sort=["Janar", "Shkurt", "Mars", "Prill", "Maj", "Qershor", "Korrik", "Gusht", "Shtator", "Tetor", "Nëntor", "Dhjetor"]),
+    y=alt.Y("Sasia (kg):Q", title="Sasia (kg)", scale=alt.Scale(zero=False)),
+    color="Kategoria:N",
+    tooltip=["Kategoria", "Muaji", "Sasia (kg)", "Vlera (€)"]
+).properties(width=800, height=400)
+
+st.altair_chart(chart, use_container_width=True)
+
 # Tabela e të dhënave
 st.subheader("📋 Tabela e të dhënave")
 st.dataframe(df_filtered, use_container_width=True)
