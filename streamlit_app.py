@@ -79,7 +79,7 @@ if not df.empty:
         # Renditja e muajve vetëm për vlerat ekzistuese
         muaj_order = [m for m in muajt_shqip.values() if m in df_filtered["Muaji"].unique()]
 
-        # Grafik i volumit mujor (line chart)
+        # Grafik i volumit mujor (line chart për vitin e përzgjedhur)
         if "Muaji" in df_filtered.columns and "Sasia (kg)" in df_filtered.columns:
             st.subheader(f"📈 Volumi mujor i {lloji.lower()}-eve për vitin {vit}")
             chart_line = alt.Chart(df_filtered).mark_line(point=True).encode(
@@ -92,20 +92,24 @@ if not df.empty:
             ).properties(width=800, height=400)
             st.altair_chart(chart_line, use_container_width=True)
 
-        # Grafik kolone për dy vitet 2024 dhe 2025
-        st.subheader("📊 Volumi mujor sipas viteve dhe kategorive")
-        df_dua_vitet = df[df["Lloji"] == lloji]  # Përzgjedh vetëm Import/Eksport
+        # Grafik kolonë për të dy vitet në të njëjtin graf
+        st.subheader("📊 Volumi mujor i Import/Eksport sipas viteve dhe kategorive")
+        df_dua_vitet = df.copy()
+        df_dua_vitet = df_dua_vitet[df_dua_vitet["Lloji"] == lloji]  # Përzgjedh vetëm Import/Eksport
+        if kategoria:
+            df_dua_vitet = df_dua_vitet[df_dua_vitet["Kategoria"].isin(kategoria)]
         df_dua_vitet["Sasia (kg)"] = df_dua_vitet["Sasia (kg)"].fillna(0)
-        df_dua_vitet["Vlera"] = df_dua_vitet["Vlera"].fillna(0)
+
         muaj_order_dua = [m for m in muajt_shqip.values() if m in df_dua_vitet["Muaji"].unique()]
 
         chart_bar = alt.Chart(df_dua_vitet).mark_bar().encode(
             x=alt.X("Muaji:N", title="Muaji", sort=muaj_order_dua),
             y=alt.Y("Sasia (kg):Q", title="Sasia (kg)", scale=alt.Scale(zero=False)),
-            color="Kategoria:N",
-            column="Viti:N",
+            color=alt.Color("Viti:N", title="Viti"),  # ngjyra për vitin
+            column=alt.Column("Kategoria:N", title="Kategoria"),  # ndan grafet sipas kategorive
             tooltip=["Viti", "Kategoria", "Muaji", "Sasia (kg)", "Vlera"]
-        ).properties(width=350, height=400)
+        ).properties(width=200, height=400)
+
         st.altair_chart(chart_bar, use_container_width=True)
 
         # Tabela e të dhënave
