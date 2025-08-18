@@ -104,6 +104,27 @@ if not df.empty:
                 else ["Muaji", "Sasia (kg)"]
             ).properties(width=800, height=400)
             st.altair_chart(chart_bar, use_container_width=True)
+            # Filtrim për import dhe eksport
+df_filtered = df[df["Lloji"].isin(["Import", "Eksport"])]
+
+# Siguro vlerat numerike pa NaN
+df_filtered["Sasia (kg)"] = df_filtered["Sasia (kg)"].fillna(0)
+df_filtered["Vlera"] = df_filtered["Vlera"].fillna(0)
+
+# Renditja e muajve
+muaj_order = [m for m in muajt_shqip.values() if m in df_filtered["Muaji"].unique()]
+
+# Grafik kolone për dy vitet
+st.subheader("📊 Volumi mujor sipas viteve dhe kategorive")
+chart_bar = alt.Chart(df_filtered).mark_bar().encode(
+    x=alt.X("Muaji:N", title="Muaji", sort=muaj_order),
+    y=alt.Y("Sasia (kg):Q", title="Sasia (kg)", scale=alt.Scale(zero=False)),
+    color="Kategoria:N",
+    column="Viti:N",
+    tooltip=["Viti", "Kategoria", "Muaji", "Sasia (kg)", "Vlera"]
+).properties(width=350, height=400)
+
+st.altair_chart(chart_bar, use_container_width=True)
 
         # Tabela e të dhënave
         st.subheader("📋 Tabela e të dhënave")
