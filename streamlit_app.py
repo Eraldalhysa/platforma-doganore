@@ -21,17 +21,30 @@ if not df.empty:
 
     st.title("📊 Platforma e të Dhënave mbi Importet dhe Eksportet Doganore")
 
+    # ✅ Normalizimi i emrave të kolonave
+    df = df.rename(columns=lambda x: x.strip())  # hiq hapësira boshe
+    df = df.rename(columns={
+        "Vlera (lekë)": "Vlera",
+        "Vlera (€)": "Vlera",
+        "Value": "Vlera",
+        "Sasia": "Sasia (kg)"
+    })
+
     # ✅ Pastrimi i kolonave
-    df["Muaji"] = pd.to_numeric(df["Muaji"], errors="coerce").fillna(0).astype(int)
-    df["Sasia (kg)"] = pd.to_numeric(df["Sasia (kg)"], errors="coerce")
-    df["Vlera (€)"] = pd.to_numeric(df["Vlera (€)"], errors="coerce")
+    if "Muaji" in df.columns:
+        df["Muaji"] = pd.to_numeric(df["Muaji"], errors="coerce").fillna(0).astype(int)
+    if "Sasia (kg)" in df.columns:
+        df["Sasia (kg)"] = pd.to_numeric(df["Sasia (kg)"], errors="coerce")
+    if "Vlera" in df.columns:
+        df["Vlera"] = pd.to_numeric(df["Vlera"], errors="coerce")
 
     # ✅ Konvertimi i muajve në shqip
     muajt_shqip = {
         1: "Janar", 2: "Shkurt", 3: "Mars", 4: "Prill", 5: "Maj", 6: "Qershor",
         7: "Korrik", 8: "Gusht", 9: "Shtator", 10: "Tetor", 11: "Nëntor", 12: "Dhjetor"
     }
-    df["Muaji"] = df["Muaji"].map(muajt_shqip)
+    if "Muaji" in df.columns:
+        df["Muaji"] = df["Muaji"].map(muajt_shqip)
 
     # Sidebar - Filtrim
     st.sidebar.header("🔍 Filtrim")
@@ -51,7 +64,7 @@ if not df.empty:
             x=alt.X("Muaji:N", title="Muaji", sort=list(muajt_shqip.values())),
             y=alt.Y("Sasia (kg):Q", title="Sasia (kg)", scale=alt.Scale(zero=False)),
             color="Kategoria:N",
-            tooltip=["Kategoria", "Muaji", "Sasia (kg)", "Vlera (€)"]
+            tooltip=["Kategoria", "Muaji", "Sasia (kg)", "Vlera"]
         ).properties(width=800, height=400)
         st.altair_chart(chart_line, use_container_width=True)
 
@@ -60,7 +73,7 @@ if not df.empty:
             x=alt.X("Muaji:N", title="Muaji", sort=list(muajt_shqip.values())),
             y=alt.Y("Sasia (kg):Q", title="Sasia (kg)", scale=alt.Scale(zero=False)),
             color="Kategoria:N",
-            tooltip=["Kategoria", "Muaji", "Sasia (kg)", "Vlera (€)"]
+            tooltip=["Kategoria", "Muaji", "Sasia (kg)", "Vlera"]
         ).properties(width=800, height=400)
         st.altair_chart(chart_bar, use_container_width=True)
 
