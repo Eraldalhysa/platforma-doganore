@@ -45,17 +45,15 @@ if not df.empty:
 
     # Sidebar - Filtrim
     st.sidebar.header("🔍 Filtrim")
-    if "Viti" in df.columns:
-        vit = st.sidebar.selectbox("Zgjidh vitin", sorted(df["Viti"].dropna().unique()))
-    else:
-        vit = None
-
+    vit = st.sidebar.selectbox("Zgjidh vitin", sorted(df["Viti"].dropna().unique())) if "Viti" in df.columns else None
     lloji = st.sidebar.selectbox("Zgjidh llojin", ["Import", "Eksport"])
+    
     if "Kategoria" in df.columns:
+        default_kategori = df["Kategoria"].dropna().unique()[:3]  # 2-3 produkte default
         kategoria = st.sidebar.multiselect(
             "Zgjidh kategoritë",
             options=df["Kategoria"].dropna().unique(),
-            default=df["Kategoria"].dropna().unique()
+            default=default_kategori
         )
     else:
         kategoria = []
@@ -91,36 +89,53 @@ if not df.empty:
         ).properties(width=800, height=400)
         st.altair_chart(chart_line, use_container_width=True)
 
-        # --- Grafik vjetor (bar chart krahasues 2024 vs 2025, renditje sipas volumit total) ---
-        st.subheader("📊 Volumi vjetor i Import/Eksport sipas kategorive (2024 vs 2025)")
+        # --- Grafik vjetor i ndarë për Import dhe Eksport ---
+        st.subheader("📊 Volumi vjetor sipas kategorive (2024 vs 2025)")
 
-        df_vjetor = df.copy()
-        df_vjetor = df_vjetor[df_vjetor["Lloji"] == lloji]
+        for lloji_temp in ["Import", "Eksport"]:
+            st.markdown(f"#### {lloji_temp}")
+            df_vjetor = df[df["Lloji"] == lloji_temp]
+            if kategoria:
+                df_vjetor = df_vjetor[df_vjetor["Kategoria"].isin(kategoria)]
+            df_vjetor["Sasia (kg)"] = df_vjetor["Sasia (kg)"].fillna(0)
+
+            df_vjetor_sum = df_vjetor.groupby(["Kategoria", "Viti"], as_index=False)["Sasia (kg)"].sum()
+            kategoria_order = df_vjetor_sum.groupby("Kategoria")["Sasia (kg)"].sum().sort_values(ascending=False).index.tolist()
+
+            chart_bar = alt.Chart(df_vjetor_sum).mark_bar().encode(
+                x=alt.X("Kategoria:N", title="Kategoria", sort=kategoria_order),
+                y=alt.Y("Sasia (kg):Q", title="Sasia totale (kg)", scale=alt.Scale(zero=False)),
+                color=alt.Color("Viti:N", title="Viti"),
+                xOffset=alt.XOffset("Viti:N"),
+                tooltip=["Viti", "Kategoria", "Sasia (kg)"]
+            ).properties(width=700, height=400)
+            st.altair_chart(chart_bar, use_container_width=True)
+
+        # --- Grafik krahasues Import vs Eksport për një vit të zgjedhur ---
+        st.subheader(f"📦 Import vs Eksport sipas kategorive për vitin {vit}")
+
+        df_year = df[df["Viti"] == vit]
         if kategoria:
-            df_vjetor = df_vjetor[df_vjetor["Kategoria"].isin(kategoria)]
-        df_vjetor["Sasia (kg)"] = df_vjetor["Sasia (kg)"].fillna(0)
+            df_year = df_year[df_year["Kategoria"].isin(kategoria)]
+        df_year["Sasia (kg)"] = df_year["Sasia (kg)"].fillna(0)
 
-        # Grupimi sipas kategorisë dhe vitit
-        df_vjetor_sum = df_vjetor.groupby(["Kategoria", "Viti"], as_index=False)["Sasia (kg)"].sum()
+        df_year_sum = df_year.groupby(["Kategoria", "Lloji"], as_index=False)["Sasia (kg)"].sum()
+        kategoria_order_year = df_year_sum.groupby("Kategoria")["Sasia (kg)"].sum().sort_values(ascending=False).index.tolist()
 
-        # Renditja e kategorive sipas volumit total (vitet bashkë)
-        kategoria_order = df_vjetor_sum.groupby("Kategoria")["Sasia (kg)"].sum().sort_values(ascending=False).index.tolist()
-
-        # Grafik kolonë krahasues me kolonat ngjitur për secilin vit
-        chart_bar = alt.Chart(df_vjetor_sum).mark_bar().encode(
-            x=alt.X("Kategoria:N", title="Kategoria", sort=kategoria_order),
+        chart_import_export = alt.Chart(df_year_sum).mark_bar().encode(
+            x=alt.X("Kategoria:N", title="Kategoria", sort=kategoria_order_year),
             y=alt.Y("Sasia (kg):Q", title="Sasia totale (kg)", scale=alt.Scale(zero=False)),
-            color=alt.Color("Viti:N", title="Viti"),
-            xOffset=alt.XOffset("Viti:N"),  # kolonat ngjitur për 2024 dhe 2025
-            tooltip=["Viti", "Kategoria", "Sasia (kg)"]
+            color=alt.Color("Lloji:N", title="Lloji"),
+            xOffset=alt.XOffset("Lloji:N"),
+            tooltip=["Kategoria", "Lloji", "Sasia (kg)"]
         ).properties(width=700, height=400)
-        st.altair_chart(chart_bar, use_container_width=True)
+        st.altair_chart(chart_import_export, use_container_width=True)
 
-        # Tabela e të dhënave
+        # --- Tabela ---
         st.subheader("📋 Tabela e të dhënave")
         st.dataframe(df_filtered, use_container_width=True)
 
-        # Shkarkimi i të dhënave
+        # --- Shkarkim CSV ---
         st.download_button(
             "📥 Shkarko të dhënat në CSV", 
             data=df_filtered.to_csv(index=False), 
