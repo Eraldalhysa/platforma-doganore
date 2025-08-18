@@ -29,9 +29,8 @@ if not df.empty:
         "Sasia": "Sasia (kg)"
     })
 
-    # Pastrimi i kolonave
-    numeric_cols = ["Muaji", "Sasia (kg)", "Vlera"]
-    for col in numeric_cols:
+    # Pastrimi i kolonave numerike
+    for col in ["Muaji", "Sasia (kg)", "Vlera"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
@@ -46,41 +45,65 @@ if not df.empty:
 
     # Sidebar - Filtrim
     st.sidebar.header("🔍 Filtrim")
-    vit = st.sidebar.selectbox("Zgjidh vitin", sorted(df["Viti"].dropna().unique()))
+    if "Viti" in df.columns:
+        vit = st.sidebar.selectbox("Zgjidh vitin", sorted(df["Viti"].dropna().unique()))
+    else:
+        vit = None
+
     lloji = st.sidebar.selectbox("Zgjidh llojin", ["Import", "Eksport"])
-    kategoria = st.sidebar.multiselect("Zgjidh kategoritë", options=df["Kategoria"].dropna().unique(), default=df["Kategoria"].dropna().unique())
+    if "Kategoria" in df.columns:
+        kategoria = st.sidebar.multiselect(
+            "Zgjidh kategoritë",
+            options=df["Kategoria"].dropna().unique(),
+            default=df["Kategoria"].dropna().unique()
+        )
+    else:
+        kategoria = []
 
     # Filtrim sipas përzgjedhjeve
-    df_filtered = df[(df["Viti"] == vit) & (df["Lloji"] == lloji) & (df["Kategoria"].isin(kategoria))]
+    df_filtered = df.copy()
+    if vit is not None and "Viti" in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered["Viti"] == vit]
+    if "Lloji" in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered["Lloji"] == lloji]
+    if kategoria and "Kategoria" in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered["Kategoria"].isin(kategoria)]
 
     if df_filtered.empty:
         st.warning("⚠️ Nuk ka të dhëna për këtë filtër.")
     else:
         # Siguro vlerat numerike pa NaN
-        df_filtered["Sasia (kg)"] = df_filtered["Sasia (kg)"].fillna(0)
-        df_filtered["Vlera"] = df_filtered["Vlera"].fillna(0)
+        if "Sasia (kg)" in df_filtered.columns:
+            df_filtered["Sasia (kg)"] = df_filtered["Sasia (kg)"].fillna(0)
+        if "Vlera" in df_filtered.columns:
+            df_filtered["Vlera"] = df_filtered["Vlera"].fillna(0)
 
         # Renditja e muajve vetëm për vlerat ekzistuese
         muaj_order = [m for m in muajt_shqip.values() if m in df_filtered["Muaji"].unique()]
 
         # Grafik i volumit mujor (line chart)
-        st.subheader(f"📈 Volumi mujor i {lloji.lower()}-eve për vitin {vit}")
-        chart_line = alt.Chart(df_filtered).mark_line(point=True).encode(
-            x=alt.X("Muaji:N", title="Muaji", sort=muaj_order),
-            y=alt.Y("Sasia (kg):Q", title="Sasia (kg)", scale=alt.Scale(zero=False)),
-            color="Kategoria:N",
-            tooltip=["Kategoria", "Muaji", "Sasia (kg)", "Vlera"]
-        ).properties(width=800, height=400)
-        st.altair_chart(chart_line, use_container_width=True)
+        if "Muaji" in df_filtered.columns and "Sasia (kg)" in df_filtered.columns:
+            st.subheader(f"📈 Volumi mujor i {lloji.lower()}-eve për vitin {vit}")
+            chart_line = alt.Chart(df_filtered).mark_line(point=True).encode(
+                x=alt.X("Muaji:N", title="Muaji", sort=muaj_order),
+                y=alt.Y("Sasia (kg):Q", title="Sasia (kg)", scale=alt.Scale(zero=False)),
+                color="Kategoria:N" if "Kategoria" in df_filtered.columns else alt.value("blue"),
+                tooltip=["Kategoria", "Muaji", "Sasia (kg)", "Vlera"]
+                if "Kategoria" in df_filtered.columns and "Vlera" in df_filtered.columns
+                else ["Muaji", "Sasia (kg)"]
+            ).properties(width=800, height=400)
+            st.altair_chart(chart_line, use_container_width=True)
 
-        # Grafik në formë kolone (bar chart)
-        chart_bar = alt.Chart(df_filtered).mark_bar().encode(
-            x=alt.X("Muaji:N", title="Muaji", sort=muaj_order),
-            y=alt.Y("Sasia (kg):Q", title="Sasia (kg)", scale=alt.Scale(zero=False)),
-            color="Kategoria:N",
-            tooltip=["Kategoria", "Muaji", "Sasia (kg)", "Vlera"]
-        ).properties(width=800, height=400)
-        st.altair_chart(chart_bar, use_container_width=True)
+            # Grafik në formë kolone (bar chart)
+            chart_bar = alt.Chart(df_filtered).mark_bar().encode(
+                x=alt.X("Muaji:N", title="Muaji", sort=muaj_order),
+                y=alt.Y("Sasia (kg):Q", title="Sasia (kg)", scale=alt.Scale(zero=False)),
+                color="Kategoria:N" if "Kategoria" in df_filtered.columns else alt.value("blue"),
+                tooltip=["Kategoria", "Muaji", "Sasia (kg)", "Vlera"]
+                if "Kategoria" in df_filtered.columns and "Vlera" in df_filtered.columns
+                else ["Muaji", "Sasia (kg)"]
+            ).properties(width=800, height=400)
+            st.altair_chart(chart_bar, use_container_width=True)
 
         # Tabela e të dhënave
         st.subheader("📋 Tabela e të dhënave")
