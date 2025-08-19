@@ -139,97 +139,85 @@ if not df.empty:
             st.altair_chart(chart_import_export, use_container_width=True)
 
         # -------------------------
-        # 🟢 GRAFIK BYREK sipas kodit doganor (HS) — BAZË VJETORE
-        # -------------------------
-        st.subheader("🥧 Pesha % sipas Kodit Doganor (Import vs Eksport)")
+       # -------------------------
+# 🟢 GRAFIK BYREK – vlerë vjetore sipas KATEGORIVE (Import veç / Eksport veç)
+# -------------------------
+st.subheader("🥧 Pesha % sipas Kategorive (Import vs Eksport, bazë vjetore)")
 
-        if hs_col is None:
-            st.info("ℹ️ Zgjidh një kolonë për kodet doganore (HS) nga sidebar që të shfaqet byreku.")
-        else:
-            metrika = st.radio("Baza e peshës për %", ["Sasia (kg)", "Vlera"], horizontal=True, key="pie_metric")
-            top_n = st.slider("Shfaq Top N kode (pjesa tjetër grup 'Të tjerët')", 3, 25, 10, key="pie_topn")
+# Kërko që Kategoria dhe Vlera të ekzistojnë
+if "Kategoria" not in df.columns:
+    st.info("ℹ️ Nuk u gjet kolona 'Kategoria' në dataset. Shtoje që të shfaqet byreku sipas kategorive.")
+elif "Vlera" not in df.columns:
+    st.info("ℹ️ Nuk u gjet kolona 'Vlera' në dataset. Sigurohu që ke fushën e vlerës monetare.")
+else:
+    # Vetëm viti i zgjedhur (BAZË VJETORE)
+    df_year_cat = df[df["Viti"] == vit].copy()
+    df_year_cat["Vlera"] = pd.to_numeric(df_year_cat["Vlera"], errors="coerce").fillna(0)
+    df_year_cat["Kategoria"] = df_year_cat["Kategoria"].astype(str).str.strip().replace({"": "Pa kategori"})
 
-            # të dhënat vetëm për VITIN e zgjedhur (vjetore)
-            df_year_hs = df[df["Viti"] == vit].copy()
-            if metrika not in df_year_hs.columns:
-                df_year_hs[metrika] = 0
-            df_year_hs[metrika] = pd.to_numeric(df_year_hs[metrika], errors="coerce").fillna(0)
-            df_year_hs[hs_col] = df_year_hs[hs_col].fillna("Pa kod").astype(str).str.strip()
+    # Filtrim opsional sipas kategorive nga sidebar (nëse ke zgjedhur disa)
+    if kategoria:
+        df_year_cat = df_year_cat[df_year_cat["Kategoria"].isin(kategoria)]
 
-            # kategori për tooltip (opsionale)
-            has_kat = "Kategoria" in df_year_hs.columns
-            if has_kat:
-                kat_map = (
-                    df_year_hs.groupby([hs_col, "Kategoria"], as_index=False)[metrika]
-                    .sum()
-                    .sort_values([hs_col, metrika], ascending=[True, False])
-                    .drop_duplicates(subset=[hs_col])
-                    .set_index(hs_col)["Kategoria"]
-                    .to_dict()
-                )
-            else:
-                kat_map = {}
+    # Agregim vjetor sipas Kategorisë dhe Llojit (Import/Eksport)
+    agg_cat = df_year_cat.groupby(["Kategoria", "Lloji"], as_index=False)["Vlera"].sum()
 
-            # agregim vjetor sipas kodi HS + lloji (Import/Eksport)
-            agg = df_year_hs.groupby([hs_col, "Lloji"], as_index=False)[metrika].sum()
-            agg.rename(columns={metrika: "Vlere"}, inplace=True)
+    # Top-N (opsional) për lexueshmëri
+    top_n = st.slider("Shfaq Top N kategori (pjesa tjetër grup 'Të tjerët')", 3, 20, 10, key="pie_cat_topn")
 
-            # Top-N + Others
-            def topn_per_lloji(df_lloji, top_n):
-                df_lloji = df_lloji.sort_values("Vlere", ascending=False)
-                if len(df_lloji) > top_n:
-                    top = df_lloji.head(top_n)
-                    others_val = df_lloji["Vlere"].iloc[top_n:].sum()
-                    others = pd.DataFrame({hs_col: ["Të tjerët"], "Lloji": [df_lloji["Lloji"].iloc[0]], "Vlere": [others_val]})
-                    return pd.concat([top, others], ignore_index=True)
-                return df_lloji
+    def topn_lloji(df_lloji, n):
+        df_lloji = df_lloji.sort_values("Vlera", ascending=False)
+        if len(df_lloji) > n:
+            top = df_lloji.head(n)
+            others_val = df_lloji["Vlera"].iloc[n:].sum()
+            others = pd.DataFrame({"Kategoria": ["Të tjerët"], "Lloji": [df_lloji["Lloji"].iloc[0]], "Vlera": [others_val]})
+            return pd.concat([top, others], ignore_index=True)
+        return df_lloji
 
-            agg_import = topn_per_lloji(agg[agg["Lloji"] == "Import"].copy(), top_n)
-            agg_export = topn_per_lloji(agg[agg["Lloji"] == "Eksport"].copy(), top_n)
+    imp = topn_lloji(agg_cat[agg_cat["Lloji"] == "Import"].copy(), top_n)
+    eksp = topn_lloji(agg_cat[agg_cat["Lloji"] == "Eksport"].copy(), top_n)
 
-            # përqindjet dhe kategoria
-            for d in (agg_import, agg_export):
-                total = d["Vlere"].sum()
-                d["Perc"] = (d["Vlere"] / total * 100) if total > 0 else 0
-                d["Kategoria"] = d[hs_col].map(kat_map).fillna("—")
+    # Llogarit peshat %
+    for d in (imp, eksp):
+        tot = d["Vlera"].sum()
+        d["Perc"] = (d["Vlera"] / tot * 100) if tot > 0 else 0
 
-            # ruaj paletën e ngjyrave konsistente midis Import/Eksport
-            shared_domain = list(pd.concat([agg_import[hs_col], agg_export[hs_col]]).drop_duplicates())
-            color_scale = alt.Scale(domain=shared_domain)
+    # Ngjyra konsistente mes dy byrekëve
+    shared_domain = list(pd.concat([imp["Kategoria"], eksp["Kategoria"]]).drop_duplicates())
+    color_scale = alt.Scale(domain=shared_domain)
 
-            c1, c2 = st.columns(2)
+    c1, c2 = st.columns(2)
 
-            # Import
-            if not agg_import.empty and agg_import["Vlere"].sum() > 0:
-                pie_import = alt.Chart(agg_import).mark_arc().encode(
-                    theta=alt.Theta("Perc:Q", title="Pesha (%)"),
-                    color=alt.Color(f"{hs_col}:N", title="Kodi doganor", scale=color_scale),
-                    tooltip=[
-                        alt.Tooltip(f"{hs_col}:N", title="Kodi"),
-                        alt.Tooltip("Kategoria:N", title="Kategoria") if has_kat else alt.Tooltip(f"{hs_col}:N", title="Kodi"),
-                        alt.Tooltip("Perc:Q", title="Pesha (%)", format=".2f"),
-                        alt.Tooltip("Vlere:Q", title=metrika, format=",.0f"),
-                    ],
-                ).properties(title=f"Import - {vit} (baza: {metrika})", width=420, height=420)
-                c1.altair_chart(pie_import, use_container_width=True)
-            else:
-                c1.info(f"Nuk ka të dhëna Import për vitin {vit}.")
+    # Import – byrek me vlerë vjetore sipas kategorive
+    if not imp.empty and imp["Vlera"].sum() > 0:
+        pie_imp = alt.Chart(imp).mark_arc().encode(
+            theta=alt.Theta("Perc:Q", title="Pesha (%)"),
+            color=alt.Color("Kategoria:N", title="Kategoria", scale=color_scale),
+            tooltip=[
+                alt.Tooltip("Kategoria:N", title="Kategoria"),
+                alt.Tooltip("Perc:Q", title="Pesha (%)", format=".2f"),
+                alt.Tooltip("Vlera:Q", title="Vlera", format=",.0f"),
+            ],
+        ).properties(title=f"Import – {vit} (bazuar në VLERË)", width=420, height=420)
+        c1.altair_chart(pie_imp, use_container_width=True)
+    else:
+        c1.info(f"Nuk ka të dhëna për Import në {vit}.")
 
-            # Eksport
-            if not agg_export.empty and agg_export["Vlere"].sum() > 0:
-                pie_export = alt.Chart(agg_export).mark_arc().encode(
-                    theta=alt.Theta("Perc:Q", title="Pesha (%)"),
-                    color=alt.Color(f"{hs_col}:N", title="Kodi doganor", scale=color_scale),
-                    tooltip=[
-                        alt.Tooltip(f"{hs_col}:N", title="Kodi"),
-                        alt.Tooltip("Kategoria:N", title="Kategoria") if has_kat else alt.Tooltip(f"{hs_col}:N", title="Kodi"),
-                        alt.Tooltip("Perc:Q", title="Pesha (%)", format=".2f"),
-                        alt.Tooltip("Vlere:Q", title=metrika, format=",.0f"),
-                    ],
-                ).properties(title=f"Eksport - {vit} (baza: {metrika})", width=420, height=420)
-                c2.altair_chart(pie_export, use_container_width=True)
-            else:
-                c2.info(f"Nuk ka të dhëna Eksport për vitin {vit}.")
+    # Eksport – byrek me vlerë vjetore sipas kategorive
+    if not eksp.empty and eksp["Vlera"].sum() > 0:
+        pie_eks = alt.Chart(eksp).mark_arc().encode(
+            theta=alt.Theta("Perc:Q", title="Pesha (%)"),
+            color=alt.Color("Kategoria:N", title="Kategoria", scale=color_scale),
+            tooltip=[
+                alt.Tooltip("Kategoria:N", title="Kategoria"),
+                alt.Tooltip("Perc:Q", title="Pesha (%)", format=".2f"),
+                alt.Tooltip("Vlera:Q", title="Vlera", format=",.0f"),
+            ],
+        ).properties(title=f"Eksport – {vit} (bazuar në VLERË)", width=420, height=420)
+        c2.altair_chart(pie_eks, use_container_width=True)
+    else:
+        c2.info(f"Nuk ka të dhëna për Eksport në {vit}.")
+
 
         # -------------------------
         # Tabela dhe Shkarkim  (KUJDES: në të njëjtin indent si grafiqet më sipër)
