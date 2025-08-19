@@ -4,14 +4,11 @@ import numpy as np
 import altair as alt
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Konfigurimi i faqes
+# Konfigurimi
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Të dhëna doganore - Shqip", layout="wide")
 st.title("📊 Platforma e të Dhënave mbi Importet dhe Eksportet Doganore")
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Funksione utilitare
-# ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
 def load_csv_robust(buf_or_path):
     encodings = ["utf-8", "latin1", "ISO-8859-1", "cp1252"]
@@ -26,10 +23,8 @@ def load_csv_robust(buf_or_path):
     return pd.DataFrame()
 
 def coerce_number(s):
-    if pd.isna(s):
-        return np.nan
-    if isinstance(s, (int, float, np.number)):
-        return s
+    if pd.isna(s): return np.nan
+    if isinstance(s, (int, float, np.number)): return s
     s = str(s)
     s = s.replace("€", "").replace("Lek", "").replace("lekë", "").replace("LEK", "")
     s = s.replace("\xa0", " ").strip()
@@ -48,7 +43,7 @@ muajt_shqip_map = {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Burimi i të dhënave (uploader i fshehur në sidebar)
+# Burimi i të dhënave (uploader i fshehur)
 # ──────────────────────────────────────────────────────────────────────────────
 default_path = "te_dhena_doganore_simuluara.csv"
 with st.sidebar.expander("⚙️ Opsione avancuara", expanded=False):
@@ -58,14 +53,13 @@ with st.sidebar.expander("⚙️ Opsione avancuara", expanded=False):
 
 df = load_csv_robust(up if up is not None else default_path)
 if df.empty:
-    st.info("Ngarko një CSV nga Sidebar → ⚙️ Opsione avancuara, ose sigurohu që skedari default ekziston në rrugën e aplikacionit.")
+    st.info("Ngarko një CSV nga Sidebar → ⚙️ Opsione avancuara, ose sigurohu që skedari default ekziston.")
     st.stop()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Normalizim kolonash dhe tipash
+# Normalizim kolonash
 # ──────────────────────────────────────────────────────────────────────────────
 df = df.rename(columns=lambda x: str(x).strip())
-
 aliases = {
     "Vlera": ["Vlera (lekë)", "Vlera (€)", "Value", "Vlere", "Amount", "Value (€)"],
     "Sasia (kg)": ["Sasia", "Sasi", "Quantity", "Sasia (kg)"],
@@ -81,6 +75,7 @@ for canon, alts in aliases.items():
                 df[canon] = df[a]
             break
 
+# HS column detection
 possible_hs = [
     "Kodi doganor", "Kodi_doganor", "KodiDoganor", "Kodi HS", "HS Code", "HS_Code", "HS",
     "Kodi", "Kodi i mallrave", "HS6", "HS8", "Nomenklatura"
@@ -91,23 +86,20 @@ for c in df.columns:
         hs_col_found = c
         break
 
-if "Vlera" in df.columns:
-    df["Vlera"] = df["Vlera"].map(coerce_number)
-if "Sasia (kg)" in df.columns:
-    df["Sasia (kg)"] = df["Sasia (kg)"].map(coerce_number)
+# Pastrim numerik
+if "Vlera" in df.columns: df["Vlera"] = df["Vlera"].map(coerce_number)
+if "Sasia (kg)" in df.columns: df["Sasia (kg)"] = df["Sasia (kg)"].map(coerce_number)
 
+# Muajt në shqip
 if "Muaji" in df.columns:
     mtmp = pd.to_numeric(df["Muaji"], errors="coerce")
     df["Muaji"] = mtmp.map(muajt_shqip_map).fillna(df["Muaji"].astype(str).str.strip())
     df["Muaji"] = df["Muaji"].replace({"": "Pa të dhëna"})
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Sidebar – Filtra (pa “Kategoria”)
+# Sidebar – Filtrim (vetëm: Viti, Lloji, HS)
 # ──────────────────────────────────────────────────────────────────────────────
 st.sidebar.header("🔍 Filtrim")
-
-# Metrika e grafikut linear (bar charts do përdorin gjithmonë Vlerën)
-metric_line = "Vlera" if "Vlera" in df.columns else ("Sasia (kg)" if "Sasia (kg)" in df.columns else None)
 
 vit = None
 if "Viti" in df.columns and df["Viti"].notna().any():
@@ -119,7 +111,6 @@ if "Lloji" in df.columns:
 else:
     lloji = st.sidebar.selectbox("Zgjidh llojin", ["Import", "Eksport"])
 
-# HS select/filtër
 hs_col = None
 if hs_col_found is not None:
     hs_col = st.sidebar.selectbox("Kolona e kodit doganor (HS)", [hs_col_found])
@@ -127,9 +118,6 @@ if hs_col_found is not None:
     hs_pick = st.sidebar.multiselect("Filtro sipas HS (opsionale)", options=hs_values, default=[])
 else:
     hs_pick = []
-
-# Opsion për të kufizuar kategoritë në 4 kryesoret (default ON)
-only_top4 = st.sidebar.checkbox("Vetëm 4 kategoritë kryesore (default)", value=True, help="Shfaq vetëm 4 kategoritë me totalin më të lartë të Vlerës në grafikë.")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Zbatimi i filtrave
@@ -150,8 +138,16 @@ for c in ["Vlera", "Sasia (kg)"]:
     if c in df_f.columns:
         df_f[c] = pd.to_numeric(df_f[c], errors="coerce").fillna(0)
 
+# Helper: kufizo në top 4 kategori sipas Vlerës (nëse ekziston kolona)
+def limit_top4_categories(df_in, metric="Vlera", group_col="Kategoria"):
+    if group_col not in df_in.columns or metric not in df_in.columns:
+        return df_in
+    sums = df_in.groupby(group_col, as_index=False)[metric].sum()
+    top4 = sums.sort_values(metric, ascending=False)[group_col].head(4).tolist()
+    return df_in[df_in[group_col].isin(top4)]
+
 # ──────────────────────────────────────────────────────────────────────────────
-# KPI-të (me “(lekë)”)
+# KPI-të
 # ──────────────────────────────────────────────────────────────────────────────
 st.subheader("🔎 Përmbledhje")
 k1, k2, k3, k4 = st.columns(4)
@@ -162,34 +158,28 @@ with k2:
 with k3:
     st.metric("Nr. transaksioneve", f"{len(df_f):,}")
 with k4:
-    if "Vlera" in df_f.columns:
-        st.metric("Mesatarja për rresht (lekë)", f"{df_f['Vlera'].mean():,.0f}")
-    else:
-        st.metric("Mesatarja për rresht (lekë)", "—")
+    st.metric("Mesatarja për rresht (lekë)", f"{df_f['Vlera'].mean():,.0f}" if "Vlera" in df_f.columns else "—")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 📈 Grafik mujor (LINE) – tituj “(lekë)” kur aplikohet
+# 📈 Grafik mujor (LINE) — gjithmonë me Vlera (lekë) nëse ekziston
 # ──────────────────────────────────────────────────────────────────────────────
-if "Muaji" in df_f.columns and metric_line in df_f.columns:
+if "Muaji" in df_f.columns and "Vlera" in df_f.columns:
     st.subheader(f"📈 Dinamika mujore e {lloji.lower()}-eve për vitin {vit if vit else '(të zgjedhurin)'}")
     muaj_order = [m for m in muajt_shqip_map.values() if m in df_f["Muaji"].unique()]
+    # kufizo në 4 kategori kryesore për grafikë (nëse ekziston 'Kategoria'):
+    df_line = limit_top4_categories(df_f.copy(), "Vlera", "Kategoria")
 
-    color_enc = "Kategoria:N" if "Kategoria" in df_f.columns else alt.value("steelblue")
+    color_enc = "Kategoria:N" if "Kategoria" in df_line.columns else alt.value("steelblue")
     tooltips = []
-    if "Kategoria" in df_f.columns: tooltips.append("Kategoria")
-    if metric_line == "Vlera":
-        tooltips += ["Muaji", alt.Tooltip("Vlera:Q", title="Vlera (lekë)", format=",.0f")]
-        y_title = "Vlera (lekë)"
-    else:
-        tooltips += ["Muaji", alt.Tooltip(f"{metric_line}:Q", format=",.0f")]
-        y_title = metric_line
+    if "Kategoria" in df_line.columns: tooltips.append("Kategoria")
+    tooltips += ["Muaji", alt.Tooltip("Vlera:Q", title="Vlera (lekë)", format=",.0f")]
 
     st.altair_chart(
-        alt.Chart(df_f)
+        alt.Chart(df_line)
         .mark_line(point=True)
         .encode(
             x=alt.X("Muaji:N", title="Muaji", sort=muaj_order),
-            y=alt.Y(f"{metric_line}:Q", title=y_title, scale=alt.Scale(zero=False)),
+            y=alt.Y("Vlera:Q", title="Vlera (lekë)", scale=alt.Scale(zero=False)),
             color=color_enc,
             tooltip=tooltips,
         )
@@ -198,81 +188,68 @@ if "Muaji" in df_f.columns and metric_line in df_f.columns:
     )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ⚠️ Të gjitha GRAFIKËT ME KOLONA përdorin **Vlera (lekë)** (fallback te Sasia)
+# 📊 Vlera (lekë) vjetore sipas kategorive (për të gjitha vitet) – bar
 # ──────────────────────────────────────────────────────────────────────────────
-metric_bar = "Vlera" if "Vlera" in df.columns else ("Sasia (kg)" if "Sasia (kg)" in df.columns else None)
-
-def maybe_limit_top4(df_in, metric, group_col="Kategoria"):
-    """Nëse only_top4=True dhe ekziston 'Kategoria', kthe vetëm 4 më të lartat sipas metric."""
-    if not only_top4 or group_col not in df_in.columns:
-        return df_in
-    sums = df_in.groupby(group_col, as_index=False)[metric].sum()
-    top4 = sums.sort_values(metric, ascending=False)[group_col].head(4).tolist()
-    return df_in[df_in[group_col].isin(top4)]
-
-# 📊 Vlera vjetore sipas kategorive (për të gjitha vitet)
-if all(c in df.columns for c in ["Lloji", "Kategoria", "Viti"]) and metric_bar:
+if all(c in df.columns for c in ["Lloji", "Kategoria", "Viti"]) and "Vlera" in df.columns:
     st.subheader("📊 Vlera (lekë) vjetore sipas kategorive")
     for lloji_temp in sorted(df["Lloji"].dropna().unique()):
         st.markdown(f"#### {lloji_temp}")
         df_v = df[df["Lloji"] == lloji_temp].copy()
-        df_v[metric_bar] = pd.to_numeric(df_v[metric_bar], errors="coerce").fillna(0)
+        df_v["Vlera"] = pd.to_numeric(df_v["Vlera"], errors="coerce").fillna(0)
+        df_v_sum = df_v.groupby(["Kategoria", "Viti"], as_index=False)["Vlera"].sum()
 
-        df_v_sum = df_v.groupby(["Kategoria", "Viti"], as_index=False)[metric_bar].sum()
-        df_v_sum = maybe_limit_top4(df_v_sum, metric_bar, "Kategoria")
+        # kufizo në top 4 kategori
+        df_v_sum = limit_top4_categories(df_v_sum, "Vlera", "Kategoria")
 
         kategoria_order = (
-            df_v_sum.groupby("Kategoria")[metric_bar].sum().sort_values(ascending=False).index.tolist()
+            df_v_sum.groupby("Kategoria")["Vlera"].sum().sort_values(ascending=False).index.tolist()
         )
-
         chart_bar = (
             alt.Chart(df_v_sum)
             .mark_bar()
             .encode(
                 x=alt.X("Kategoria:N", title="Kategoria", sort=kategoria_order),
-                y=alt.Y(f"{metric_bar}:Q", title="Vlera (lekë)" if metric_bar=="Vlera" else f"Totali {metric_bar}", scale=alt.Scale(zero=False)),
+                y=alt.Y("Vlera:Q", title="Vlera (lekë)", scale=alt.Scale(zero=False)),
                 color=alt.Color("Viti:N", title="Viti"),
                 xOffset=alt.XOffset("Viti:N"),
-                tooltip=[
-                    "Viti", "Kategoria",
-                    alt.Tooltip(f"{metric_bar}:Q", title="Vlera (lekë)" if metric_bar=="Vlera" else metric_bar, format=",.0f")
-                ],
+                tooltip=["Viti", "Kategoria", alt.Tooltip("Vlera:Q", title="Vlera (lekë)", format=",.0f")],
             )
             .properties(height=420)
         )
         st.altair_chart(chart_bar, use_container_width=True)
 
-# 📦 Import vs Eksport për vitin e zgjedhur (me Vlera)
-if vit is not None and all(c in df.columns for c in ["Viti", "Lloji", "Kategoria"]) and metric_bar:
+# ──────────────────────────────────────────────────────────────────────────────
+# 📦 Import vs Eksport sipas kategorive për vitin e zgjedhur – bar
+# ──────────────────────────────────────────────────────────────────────────────
+if vit is not None and all(c in df.columns for c in ["Viti", "Lloji", "Kategoria"]) and "Vlera" in df.columns:
     st.subheader(f"📦 Import vs Eksport sipas kategorive për vitin {vit}")
     df_year = df[pd.to_numeric(df["Viti"], errors="coerce") == vit].copy()
-    df_year[metric_bar] = pd.to_numeric(df_year[metric_bar], errors="coerce").fillna(0)
+    df_year["Vlera"] = pd.to_numeric(df_year["Vlera"], errors="coerce").fillna(0)
+    df_year_sum = df_year.groupby(["Kategoria", "Lloji"], as_index=False)["Vlera"].sum()
 
-    df_year_sum = df_year.groupby(["Kategoria", "Lloji"], as_index=False)[metric_bar].sum()
-    df_year_sum = maybe_limit_top4(df_year_sum, metric_bar, "Kategoria")
+    # kufizo në top 4 kategori
+    df_year_sum = limit_top4_categories(df_year_sum, "Vlera", "Kategoria")
 
     kategoria_order_year = (
-        df_year_sum.groupby("Kategoria")[metric_bar].sum().sort_values(ascending=False).index.tolist()
+        df_year_sum.groupby("Kategoria")["Vlera"].sum().sort_values(ascending=False).index.tolist()
     )
-
     chart_ie = (
         alt.Chart(df_year_sum)
         .mark_bar()
         .encode(
             x=alt.X("Kategoria:N", title="Kategoria", sort=kategoria_order_year),
-            y=alt.Y(f"{metric_bar}:Q", title="Vlera (lekë)" if metric_bar=="Vlera" else f"Totali {metric_bar}", scale=alt.Scale(zero=False)),
+            y=alt.Y("Vlera:Q", title="Vlera (lekë)", scale=alt.Scale(zero=False)),
             color=alt.Color("Lloji:N", title="Lloji"),
             xOffset=alt.XOffset("Lloji:N"),
-            tooltip=[
-                "Kategoria", "Lloji",
-                alt.Tooltip(f"{metric_bar}:Q", title="Vlera (lekë)" if metric_bar=="Vlera" else metric_bar, format=",.0f")
-            ],
+            tooltip=["Kategoria", "Lloji", alt.Tooltip("Vlera:Q", title="Vlera (lekë)", format=",.0f")],
         )
         .properties(height=420)
     )
     st.altair_chart(chart_ie, use_container_width=True)
 
+# ──────────────────────────────────────────────────────────────────────────────
 # 🥧 Pesha % sipas Kategorive (Import vs Eksport, bazuar në VLERË)
+# ──────────────────────────────────────────────────────────────────────────────
 st.subheader("🥧 Pesha % sipas Kategorive (Import vs Eksport, bazë vjetore)")
 if all(col in df.columns for col in ["Viti", "Lloji", "Kategoria", "Vlera"]) and vit is not None:
     df_year_cat = df[pd.to_numeric(df["Viti"], errors="coerce") == vit].copy()
@@ -281,12 +258,11 @@ if all(col in df.columns for col in ["Viti", "Lloji", "Kategoria", "Vlera"]) and
 
     agg_cat = df_year_cat.groupby(["Kategoria", "Lloji"], as_index=False)["Vlera"].sum()
 
-    # kufizo në top 4 kategori sipas Vlerës (nëse kërkohet)
-    if only_top4:
-        top4_list = (
-            agg_cat.groupby("Kategoria")["Vlera"].sum().sort_values(ascending=False).head(4).index.tolist()
-        )
-        agg_cat = agg_cat[agg_cat["Kategoria"].isin(top4_list)]
+    # kufizo në top 4 kategori
+    top4 = (
+        agg_cat.groupby("Kategoria")["Vlera"].sum().sort_values(ascending=False).head(4).index.tolist()
+    )
+    agg_cat = agg_cat[agg_cat["Kategoria"].isin(top4)]
 
     def add_percent(df_lloji):
         total = df_lloji["Vlera"].sum()
@@ -339,27 +315,22 @@ if all(col in df.columns for col in ["Viti", "Lloji", "Kategoria", "Vlera"]) and
     else:
         c2.info(f"Nuk ka të dhëna për Eksport në {vit}.")
 else:
-    st.info("ℹ️ Për byrekët nevojiten kolonat: 'Viti', 'Lloji', 'Kategoria', 'Vlera' dhe një vit i përzgjedhur.")
+    st.info("ℹ️ Për byrekët duhen: 'Viti', 'Lloji', 'Kategoria', 'Vlera' dhe një vit i përzgjedhur.")
 
-# 🔢 Top HS sipas VLERËS (fallback te Sasia) — kufizo në top 4 kategori nëse ka kategori në df_f
-if ("Kategoria" in df_f.columns) and only_top4 and "Vlera" in df_f.columns:
-    top4_now = (
-        df_f.groupby("Kategoria", as_index=False)["Vlera"].sum()
-        .sort_values("Vlera", ascending=False)["Kategoria"].head(4).tolist()
-    )
-    df_f = df_f[df_f["Kategoria"].isin(top4_now)]
-
-if hs_col and metric_bar:
-    st.subheader(f"🔢 Top 15 HS sipas {'Vlera (lekë)' if metric_bar=='Vlera' else metric_bar}")
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔢 Top HS sipas VLERËS (lekë)
+# ──────────────────────────────────────────────────────────────────────────────
+if hs_col and "Vlera" in df_f.columns:
+    st.subheader("🔢 Top 15 HS sipas Vlera (lekë)")
     df_hs = df_f.dropna(subset=[hs_col]).copy()
-    grp = df_hs.groupby(hs_col, as_index=False)[metric_bar].sum().sort_values(metric_bar, ascending=False).head(15)
+    grp = df_hs.groupby(hs_col, as_index=False)["Vlera"].sum().sort_values("Vlera", ascending=False).head(15)
     hs_chart = (
         alt.Chart(grp)
         .mark_bar()
         .encode(
-            x=alt.X(f"{metric_bar}:Q", title="Vlera (lekë)" if metric_bar=="Vlera" else f"Totali {metric_bar}", scale=alt.Scale(zero=True)),
+            x=alt.X("Vlera:Q", title="Vlera (lekë)", scale=alt.Scale(zero=True)),
             y=alt.Y(f"{hs_col}:N", sort="-x", title="Kodi HS"),
-            tooltip=[hs_col, alt.Tooltip(f"{metric_bar}:Q", title="Vlera (lekë)" if metric_bar=="Vlera" else metric_bar, format=",.0f")],
+            tooltip=[hs_col, alt.Tooltip("Vlera:Q", title="Vlera (lekë)", format=",.0f")],
         )
         .properties(height=520)
     )
