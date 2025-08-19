@@ -118,7 +118,29 @@ if not df.empty:
             ).properties(width=800, height=400)
             st.altair_chart(chart_line, use_container_width=True)
 
-               # --- Grafik krahasues Import vs Eksport ---
+        # --- Grafik vjetor (Import/Eksport) ---
+        if "Lloji" in df.columns and "Kategoria" in df.columns and "Viti" in df.columns:
+            st.subheader("📊 Volumi vjetor sipas kategorive (2024 vs 2025)")
+            for lloji_temp in ["Import", "Eksport"]:
+                st.markdown(f"#### {lloji_temp}")
+                df_vjetor = df[df["Lloji"] == lloji_temp].copy()
+                if kategoria:
+                    df_vjetor = df_vjetor[df_vjetor["Kategoria"].isin(kategoria)]
+                df_vjetor["Sasia (kg)"] = df_vjetor["Sasia (kg)"].fillna(0)
+
+                df_vjetor_sum = df_vjetor.groupby(["Kategoria", "Viti"], as_index=False)["Sasia (kg)"].sum()
+                kategoria_order = df_vjetor_sum.groupby("Kategoria")["Sasia (kg)"].sum().sort_values(ascending=False).index.tolist()
+
+                chart_bar = alt.Chart(df_vjetor_sum).mark_bar().encode(
+                    x=alt.X("Kategoria:N", title="Kategoria", sort=kategoria_order),
+                    y=alt.Y("Sasia (kg):Q", title="Sasia totale (kg)", scale=alt.Scale(zero=False)),
+                    color=alt.Color("Viti:N", title="Viti"),
+                    xOffset=alt.XOffset("Viti:N"),
+                    tooltip=["Viti", "Kategoria", "Sasia (kg)"]
+                ).properties(width=700, height=400)
+                st.altair_chart(chart_bar, use_container_width=True)
+
+        # --- Grafik krahasues Import vs Eksport ---
         if "Viti" in df.columns and "Lloji" in df.columns and "Kategoria" in df.columns:
             st.subheader(f"📦 Import vs Eksport sipas kategorive për vitin {vit}")
             df_year = df[df["Viti"] == vit].copy()
@@ -139,7 +161,7 @@ if not df.empty:
             st.altair_chart(chart_import_export, use_container_width=True)
 
         # -------------------------
-       # -------------------------
+# -------------------------
 # 🟢 GRAFIK BYREK – vlerë vjetore sipas KATEGORIVE (Import veç / Eksport veç)
 # -------------------------
 st.subheader("🥧 Pesha % sipas Kategorive (Import vs Eksport, bazë vjetore)")
@@ -148,39 +170,31 @@ st.subheader("🥧 Pesha % sipas Kategorive (Import vs Eksport, bazë vjetore)")
 if "Kategoria" not in df.columns:
     st.info("ℹ️ Nuk u gjet kolona 'Kategoria' në dataset. Shtoje që të shfaqet byreku sipas kategorive.")
 elif "Vlera" not in df.columns:
-    st.info("ℹ️ Nuk u gjet kolona 'Vlera' në dataset. Sigurohu që ke fushën e vlerës monetare.")
+    st.info("ℹ️ Nuk u gjet kolona 'Vlera' në dataset.")
 else:
     # Vetëm viti i zgjedhur (BAZË VJETORE)
     df_year_cat = df[df["Viti"] == vit].copy()
     df_year_cat["Vlera"] = pd.to_numeric(df_year_cat["Vlera"], errors="coerce").fillna(0)
-    df_year_cat["Kategoria"] = df_year_cat["Kategoria"].astype(str).str.strip().replace({"": "Pa kategori"})
+    df_year_cat["Kategoria"] = (
+        df_year_cat["Kategoria"].astype(str).str.strip().replace({"": "Pa kategori"})
+    )
 
-    # Filtrim opsional sipas kategorive nga sidebar (nëse ke zgjedhur disa)
+    # Respekto filtrin nga sidebar (nëse janë përzgjedhur kategori)
     if kategoria:
         df_year_cat = df_year_cat[df_year_cat["Kategoria"].isin(kategoria)]
 
     # Agregim vjetor sipas Kategorisë dhe Llojit (Import/Eksport)
     agg_cat = df_year_cat.groupby(["Kategoria", "Lloji"], as_index=False)["Vlera"].sum()
 
-    # Top-N (opsional) për lexueshmëri
-    top_n = st.slider("Shfaq Top N kategori (pjesa tjetër grup 'Të tjerët')", 3, 20, 10, key="pie_cat_topn")
-
-    def topn_lloji(df_lloji, n):
-        df_lloji = df_lloji.sort_values("Vlera", ascending=False)
-        if len(df_lloji) > n:
-            top = df_lloji.head(n)
-            others_val = df_lloji["Vlera"].iloc[n:].sum()
-            others = pd.DataFrame({"Kategoria": ["Të tjerët"], "Lloji": [df_lloji["Lloji"].iloc[0]], "Vlera": [others_val]})
-            return pd.concat([top, others], ignore_index=True)
+    # Llogarit peshat % brenda secilit lloj
+    def add_percent(df_lloji):
+        total = df_lloji["Vlera"].sum()
+        df_lloji = df_lloji.copy()
+        df_lloji["Perc"] = (df_lloji["Vlera"] / total * 100) if total > 0 else 0
         return df_lloji
 
-    imp = topn_lloji(agg_cat[agg_cat["Lloji"] == "Import"].copy(), top_n)
-    eksp = topn_lloji(agg_cat[agg_cat["Lloji"] == "Eksport"].copy(), top_n)
-
-    # Llogarit peshat %
-    for d in (imp, eksp):
-        tot = d["Vlera"].sum()
-        d["Perc"] = (d["Vlera"] / tot * 100) if tot > 0 else 0
+    imp = add_percent(agg_cat[agg_cat["Lloji"] == "Import"])
+    eksp = add_percent(agg_cat[agg_cat["Lloji"] == "Eksport"])
 
     # Ngjyra konsistente mes dy byrekëve
     shared_domain = list(pd.concat([imp["Kategoria"], eksp["Kategoria"]]).drop_duplicates())
@@ -218,9 +232,8 @@ else:
     else:
         c2.info(f"Nuk ka të dhëna për Eksport në {vit}.")
 
-
         # -------------------------
-        # Tabela dhe Shkarkim  (KUJDES: në të njëjtin indent si grafiqet më sipër)
+        # Tabela dhe Shkarkim
         # -------------------------
         st.subheader("📋 Tabela e të dhënave")
         st.dataframe(df_filtered, use_container_width=True)
