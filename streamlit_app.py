@@ -99,6 +99,9 @@ if "Muaji" in df.columns:
 # ──────────────────────────────────────────────────────────────────────────────
 # Sidebar – Filtrim (vetëm: Viti, Lloji, HS)
 # ──────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# Sidebar – Filtrim (me Kategori të përzgjedhura)
+# ──────────────────────────────────────────────────────────────────────────────
 st.sidebar.header("🔍 Filtrim")
 
 vit = None
@@ -111,6 +114,19 @@ if "Lloji" in df.columns:
 else:
     lloji = st.sidebar.selectbox("Zgjidh llojin", ["Import", "Eksport"])
 
+# ➕ Filtri për kategori (default 4 të parat)
+if "Kategoria" in df.columns:
+    kategorite = sorted(df["Kategoria"].dropna().unique().tolist())
+    default_kategori = kategorite[:4] if len(kategorite) >= 4 else kategorite
+    kategoria = st.sidebar.multiselect(
+        "Zgjidh kategoritë",
+        options=kategorite,
+        default=default_kategori
+    )
+else:
+    kategoria = []
+
+# HS select/filtër
 hs_col = None
 if hs_col_found is not None:
     hs_col = st.sidebar.selectbox("Kolona e kodit doganor (HS)", [hs_col_found])
@@ -123,28 +139,22 @@ else:
 # Zbatimi i filtrave
 # ──────────────────────────────────────────────────────────────────────────────
 df_f = df.copy()
+
 if vit is not None and "Viti" in df_f.columns:
     df_f = df_f[pd.to_numeric(df_f["Viti"], errors="coerce") == vit]
+
 if "Lloji" in df_f.columns:
     df_f = df_f[df_f["Lloji"] == lloji]
+
+if kategoria and "Kategoria" in df_f.columns:
+    df_f = df_f[df_f["Kategoria"].isin(kategoria)]
+
 if hs_pick and hs_col:
     df_f = df_f[df_f[hs_col].astype(str).isin(hs_pick)]
 
 if df_f.empty:
     st.warning("⚠️ Nuk ka të dhëna për këtë filtër.")
     st.stop()
-
-for c in ["Vlera", "Sasia (kg)"]:
-    if c in df_f.columns:
-        df_f[c] = pd.to_numeric(df_f[c], errors="coerce").fillna(0)
-
-# Helper: kufizo në top 4 kategori sipas Vlerës (nëse ekziston kolona)
-def limit_top4_categories(df_in, metric="Vlera", group_col="Kategoria"):
-    if group_col not in df_in.columns or metric not in df_in.columns:
-        return df_in
-    sums = df_in.groupby(group_col, as_index=False)[metric].sum()
-    top4 = sums.sort_values(metric, ascending=False)[group_col].head(4).tolist()
-    return df_in[df_in[group_col].isin(top4)]
 
 # ──────────────────────────────────────────────────────────────────────────────
 # KPI-të
