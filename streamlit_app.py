@@ -149,16 +149,46 @@ def limit_top4_categories(df_in, metric="Vlera", group_col="Kategoria"):
 # ──────────────────────────────────────────────────────────────────────────────
 # KPI-të
 # ──────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# KPI-të: Import / Eksport + Mesatarja & Nr. transaksioneve në vit
+# ──────────────────────────────────────────────────────────────────────────────
 st.subheader("🔎 Përmbledhje")
+
+if "Lloji" in df_f.columns:
+    df_exp = df_f[df_f["Lloji"] == "Eksport"].copy()
+    df_imp = df_f[df_f["Lloji"] == "Import"].copy()
+else:
+    df_exp, df_imp = pd.DataFrame(), pd.DataFrame()
+
 k1, k2, k3, k4 = st.columns(4)
 with k1:
-    st.metric("Totali i vlerës (lekë)", f"{df_f['Vlera'].sum():,.0f}" if "Vlera" in df_f.columns else "—")
+    st.metric("Totali i eksporteve (lekë)",
+              f"{df_exp['Vlera'].sum():,.0f}" if "Vlera" in df_exp.columns else "—")
 with k2:
-    st.metric("Totali i sasisë (kg)", f"{df_f['Sasia (kg)'].sum():,.0f}" if "Sasia (kg)" in df_f.columns else "—")
+    st.metric("Totali i eksporteve (kg)",
+              f"{df_exp['Sasia (kg)'].sum():,.0f}" if "Sasia (kg)" in df_exp.columns else "—")
 with k3:
-    st.metric("Nr. transaksioneve", f"{len(df_f):,}")
+    st.metric("Totali i importeve (lekë)",
+              f"{df_imp['Vlera'].sum():,.0f}" if "Vlera" in df_imp.columns else "—")
 with k4:
-    st.metric("Mesatarja për rresht (lekë)", f"{df_f['Vlera'].mean():,.0f}" if "Vlera" in df_f.columns else "—")
+    st.metric("Totali i importeve (kg)",
+              f"{df_imp['Sasia (kg)'].sum():,.0f}" if "Sasia (kg)" in df_imp.columns else "—")
+
+k5, k6 = st.columns(2)
+with k5:
+    if vit is not None and "Vlera" in df_f.columns and "Viti" in df_f.columns:
+        avg_year = df_f.groupby("Viti")["Vlera"].mean().get(vit, np.nan)
+        st.metric("Mesatarja vjetore (lekë)",
+                  f"{avg_year:,.0f}" if not pd.isna(avg_year) else "—")
+    else:
+        st.metric("Mesatarja vjetore (lekë)", "—")
+
+with k6:
+    if vit is not None and "Viti" in df_f.columns:
+        n_trans = len(df_f[df_f["Viti"] == vit])
+        st.metric("Nr. transaksioneve në vit", f"{n_trans:,}")
+    else:
+        st.metric("Nr. transaksioneve në vit", "—")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 📈 Grafik mujor (LINE) — gjithmonë me Vlera (lekë) nëse ekziston
