@@ -97,9 +97,7 @@ if "Muaji" in df.columns:
     df["Muaji"] = df["Muaji"].replace({"": "Pa të dhëna"})
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Sidebar – Filtrim (vetëm: Viti, Lloji, HS)
-# ──────────────────────────────────────────────────────────────────────────────
-# Sidebar – Filtrim (me Kategori të përzgjedhura)
+# Sidebar – Filtrim (me Kategori)
 # ──────────────────────────────────────────────────────────────────────────────
 st.sidebar.header("🔍 Filtrim")
 
@@ -113,7 +111,7 @@ if "Lloji" in df.columns:
 else:
     lloji = st.sidebar.selectbox("Zgjidh llojin", ["Import", "Eksport"])
 
-# ➕ Filtri për kategori (default 4 të parat)
+# Kategoria (multiselect) me 4 default
 if "Kategoria" in df.columns:
     kategorite = sorted(df["Kategoria"].dropna().unique().tolist())
     default_kategori = kategorite[:4] if len(kategorite) >= 4 else kategorite
@@ -135,19 +133,15 @@ else:
     hs_pick = []
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Zbatimi i filtrave
+# Zbatimi i filtrave (vetëm kategoritë e përzgjedhura)
 # ──────────────────────────────────────────────────────────────────────────────
 df_f = df.copy()
-
 if vit is not None and "Viti" in df_f.columns:
     df_f = df_f[pd.to_numeric(df_f["Viti"], errors="coerce") == vit]
-
 if "Lloji" in df_f.columns:
     df_f = df_f[df_f["Lloji"] == lloji]
-
 if kategoria and "Kategoria" in df_f.columns:
     df_f = df_f[df_f["Kategoria"].isin(kategoria)]
-
 if hs_pick and hs_col:
     df_f = df_f[df_f[hs_col].astype(str).isin(hs_pick)]
 
@@ -155,12 +149,12 @@ if df_f.empty:
     st.warning("⚠️ Nuk ka të dhëna për këtë filtër.")
     st.stop()
 
+for c in ["Vlera", "Sasia (kg)"]:
+    if c in df_f.columns:
+        df_f[c] = pd.to_numeric(df_f[c], errors="coerce").fillna(0)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# KPI-të
-# ──────────────────────────────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────────────────────
-# KPI-të: Import / Eksport + Mesatarja & Nr. transaksioneve në vit
+# KPI-të: Import/Eksport + Mesatarja vjetore + Nr. transaksioneve në vit
 # ──────────────────────────────────────────────────────────────────────────────
 st.subheader("🔎 Përmbledhje")
 
@@ -201,21 +195,19 @@ with k6:
         st.metric("Nr. transaksioneve në vit", "—")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 📈 Grafik mujor (LINE) — gjithmonë me Vlera (lekë) nëse ekziston
+# 📈 Grafik mujor (LINE) — Vlera (lekë)
 # ──────────────────────────────────────────────────────────────────────────────
 if "Muaji" in df_f.columns and "Vlera" in df_f.columns:
     st.subheader(f"📈 Dinamika mujore e {lloji.lower()}-eve për vitin {vit if vit else '(të zgjedhurin)'}")
     muaj_order = [m for m in muajt_shqip_map.values() if m in df_f["Muaji"].unique()]
-    # kufizo në 4 kategori kryesore për grafikë (nëse ekziston 'Kategoria'):
-    df_line = limit_top4_categories(df_f.copy(), "Vlera", "Kategoria")
 
-    color_enc = "Kategoria:N" if "Kategoria" in df_line.columns else alt.value("steelblue")
+    color_enc = "Kategoria:N" if "Kategoria" in df_f.columns else alt.value("steelblue")
     tooltips = []
-    if "Kategoria" in df_line.columns: tooltips.append("Kategoria")
+    if "Kategoria" in df_f.columns: tooltips.append("Kategoria")
     tooltips += ["Muaji", alt.Tooltip("Vlera:Q", title="Vlera (lekë)", format=",.0f")]
 
     st.altair_chart(
-        alt.Chart(df_line)
+        alt.Chart(df_f)
         .mark_line(point=True)
         .encode(
             x=alt.X("Muaji:N", title="Muaji", sort=muaj_order),
@@ -228,18 +220,17 @@ if "Muaji" in df_f.columns and "Vlera" in df_f.columns:
     )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 📊 Vlera (lekë) vjetore sipas kategorive (për të gjitha vitet) – bar
+# 📊 Vlera (lekë) vjetore sipas kategorive – bar (për të gjitha vitet, por i filtruar me kategoritë e zgjedhura)
 # ──────────────────────────────────────────────────────────────────────────────
 if all(c in df.columns for c in ["Lloji", "Kategoria", "Viti"]) and "Vlera" in df.columns:
     st.subheader("📊 Vlera (lekë) vjetore sipas kategorive")
     for lloji_temp in sorted(df["Lloji"].dropna().unique()):
         st.markdown(f"#### {lloji_temp}")
         df_v = df[df["Lloji"] == lloji_temp].copy()
+        if kategoria and "Kategoria" in df_v.columns:
+            df_v = df_v[df_v["Kategoria"].isin(kategoria)]
         df_v["Vlera"] = pd.to_numeric(df_v["Vlera"], errors="coerce").fillna(0)
         df_v_sum = df_v.groupby(["Kategoria", "Viti"], as_index=False)["Vlera"].sum()
-
-        # kufizo në top 4 kategori
-        df_v_sum = limit_top4_categories(df_v_sum, "Vlera", "Kategoria")
 
         kategoria_order = (
             df_v_sum.groupby("Kategoria")["Vlera"].sum().sort_values(ascending=False).index.tolist()
@@ -264,11 +255,10 @@ if all(c in df.columns for c in ["Lloji", "Kategoria", "Viti"]) and "Vlera" in d
 if vit is not None and all(c in df.columns for c in ["Viti", "Lloji", "Kategoria"]) and "Vlera" in df.columns:
     st.subheader(f"📦 Import vs Eksport sipas kategorive për vitin {vit}")
     df_year = df[pd.to_numeric(df["Viti"], errors="coerce") == vit].copy()
+    if kategoria and "Kategoria" in df_year.columns:
+        df_year = df_year[df_year["Kategoria"].isin(kategoria)]
     df_year["Vlera"] = pd.to_numeric(df_year["Vlera"], errors="coerce").fillna(0)
     df_year_sum = df_year.groupby(["Kategoria", "Lloji"], as_index=False)["Vlera"].sum()
-
-    # kufizo në top 4 kategori
-    df_year_sum = limit_top4_categories(df_year_sum, "Vlera", "Kategoria")
 
     kategoria_order_year = (
         df_year_sum.groupby("Kategoria")["Vlera"].sum().sort_values(ascending=False).index.tolist()
@@ -288,21 +278,17 @@ if vit is not None and all(c in df.columns for c in ["Viti", "Lloji", "Kategoria
     st.altair_chart(chart_ie, use_container_width=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 🥧 Pesha % sipas Kategorive (Import vs Eksport, bazuar në VLERË)
+# 🥧 Pesha % sipas Kategorive (Import vs Eksport) – bazuar në VLERË për vitin e zgjedhur
 # ──────────────────────────────────────────────────────────────────────────────
 st.subheader("🥧 Pesha % sipas Kategorive (Import vs Eksport, bazë vjetore)")
 if all(col in df.columns for col in ["Viti", "Lloji", "Kategoria", "Vlera"]) and vit is not None:
     df_year_cat = df[pd.to_numeric(df["Viti"], errors="coerce") == vit].copy()
+    if kategoria and "Kategoria" in df_year_cat.columns:
+        df_year_cat = df_year_cat[df_year_cat["Kategoria"].isin(kategoria)]
     df_year_cat["Vlera"] = pd.to_numeric(df_year_cat["Vlera"], errors="coerce").fillna(0)
     df_year_cat["Kategoria"] = df_year_cat["Kategoria"].astype(str).str.strip().replace({"": "Pa kategori"})
 
     agg_cat = df_year_cat.groupby(["Kategoria", "Lloji"], as_index=False)["Vlera"].sum()
-
-    # kufizo në top 4 kategori
-    top4 = (
-        agg_cat.groupby("Kategoria")["Vlera"].sum().sort_values(ascending=False).head(4).index.tolist()
-    )
-    agg_cat = agg_cat[agg_cat["Kategoria"].isin(top4)]
 
     def add_percent(df_lloji):
         total = df_lloji["Vlera"].sum()
@@ -377,7 +363,7 @@ if hs_col and "Vlera" in df_f.columns:
     st.altair_chart(hs_chart, use_container_width=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Tabela & Shkarkim
+# Tabela & Shkarkim (vetëm kategoritë e përzgjedhura)
 # ──────────────────────────────────────────────────────────────────────────────
 st.subheader("📋 Tabela e të dhënave")
 st.dataframe(df_f, use_container_width=True)
