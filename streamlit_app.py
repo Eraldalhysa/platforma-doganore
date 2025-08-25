@@ -7,7 +7,7 @@ import altair as alt
 # Konfigurimi
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Të dhëna doganore - Shqip", layout="wide")
-st.title("📊 Platforma e të Dhënave mbi Importet dhe Eksportet Doganore")
+st.title("📊 Platforma e të dhënave mbi importet dhe eksportet doganore")
 
 @st.cache_data(show_spinner=False)
 def load_csv_robust(buf_or_path):
